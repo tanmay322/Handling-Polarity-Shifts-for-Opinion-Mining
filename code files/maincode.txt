@@ -1,0 +1,269 @@
+# Import the pandas package, then use the "read_csv" function to read the labeled training data
+import pandas as pd       
+train = pd.read_csv("exceptp4n4.txt", header=0, \
+                    delimiter="\t", quoting=2)
+
+num_reviews = train["review"].size
+
+	
+#remove fullstop:
+yo=[]
+for i in xrange(0, num_reviews):
+    te = train["review"][i]
+    words = [te.replace(".", " ")]
+    final_string = ''.join(words)
+    #print final_string
+    yo.append(final_string)
+
+#print yo
+arsize = len(yo)
+arsize
+
+a = pd.read_csv("emoticonsdictionary.txt", header=0, \
+                    delimiter="\t", quoting=2)
+dict = {}
+for i in range(len(a.emoticon)):
+    dict[a.emoticon[i]] = a.meaning[i]
+	
+
+b = pd.read_csv("slangsdictionary.txt", header=0, \
+                    delimiter="\t", quoting=2)
+dicts = {}
+for i in range(len(b.slang)):
+    dicts[b.slang[i]] = b.meaning[i]
+	
+
+def remove_accents(input_str):
+    import unicodedata
+    nfkd_form = unicodedata.normalize('NFKD', input_str)
+    return u"".join([c for c in nfkd_form if not unicodedata.combining(c)])
+	
+	
+
+def emoticons_handling(raw_review):
+    words = raw_review.split()
+    return(' '.join(str(dict.get(word, word)) for word in words))
+	
+    
+	
+def html_tags(raw_review):
+     from bs4 import BeautifulSoup
+     review_text = BeautifulSoup(raw_review).get_text()
+     return( ''.join( review_text ))
+	
+	
+	
+def punctuations(raw_review):
+     tex = raw_review
+     tex = tex.replace("n't",' not')
+     tex = tex.replace("'s",' is')
+     tex = tex.replace("'re",' are')
+     tex = tex.replace("'ve",' have')
+     tex = tex.replace("'m",' am')
+     tex = tex.replace("'d",' would')
+     tex = tex.replace("'ll",' will')
+     tex = tex.replace("'em",' them')
+     tex = tex.replace("in'",'ing')
+     import re
+     letters_only = re.sub("[^a-zA-Z]", " ", tex)
+     return( ''.join( letters_only ))
+	
+	
+	
+def slangs_handling(raw_review):
+    words1 = raw_review.split()
+    return(' '.join(str(dicts.get(word, word)) for word in words1))
+
+	
+	
+def stop_words(raw_review):
+     import nltk
+     #nltk.download()
+     words = raw_review.split()
+     from nltk.corpus import stopwords # Import the stop word list
+     stops = set(stopwords.words("english"))
+     meaningful_words = [w for w in words if not w in stops]
+     return( " ".join( meaningful_words ))
+    
+	
+	
+def stemming(raw_review):
+    from nltk.stem import PorterStemmer
+    stemmer = PorterStemmer()
+    text = raw_review
+    words = text.split()
+    ltext = ''
+    for element in words:
+         ltext = ltext + ' '+ stemmer.stem(element)
+    return(ltext)
+	
+
+	
+def lemmatization(raw_review):
+    from nltk.stem.wordnet import WordNetLemmatizer
+    lmtzr = WordNetLemmatizer()
+    text = raw_review
+    words = text.split()
+    ltext = ''
+    for element in words:
+         ltext = ltext + ' '+ lmtzr.lemmatize(element)
+    return(ltext)
+	
+
+	
+# Initialize an empty list to hold the clean reviews
+#clean_train_reviews = []
+yh=[]
+emoticons = []
+html = []
+slangs = []
+punct = []
+stopw = []
+stem = []
+lem = []
+
+
+
+
+print "Cleaning and parsing the training set movie reviews...\n"
+# Loop over each review; create an index i that goes from 0 to the length
+# of the movie review list 
+for i in xrange( 0, arsize ):
+    # Call our function for each one, and add the result to the list of
+    # clean reviews
+	# If the index is evenly divisible by 1000, print a message
+    if( (i+1)%1000 == 0 ):
+         print "Review %d of %d\n" % ( i+1, arsize ) 
+    #clean_train_reviews.append( review_to_words( train["review"][i] ) )
+    yh.append(remove_accents(unicode(yo[0])))
+    emoticons.append( emoticons_handling( yh[i] ) )
+    html.append(html_tags(yh[i]))
+    slangs.append(slangs_handling(html[i]))
+    punct.append(punctuations(slangs[i]))
+    stopw.append(stop_words(punct[i]))
+    stem.append(stemming(stopw[i]))
+    lem.append(lemmatization(html[i]))
+    
+
+	
+    
+
+
+print "Creating the bag of words...\n"
+from sklearn.feature_extraction.text import CountVectorizer
+
+# Initialize the "CountVectorizer" object, which is scikit-learn's
+# bag of words tool.  
+vectorizer = CountVectorizer(analyzer = "word",   \
+                             tokenizer = None,    \
+                             preprocessor = None, \
+                             stop_words = None,   \
+                             max_features = 5000) 
+
+# fit_transform() does two functions: First, it fits the model
+# and learns the vocabulary; second, it transforms our training data
+# into feature vectors. The input to fit_transform should be a list of 
+# strings.
+train_data_features = vectorizer.fit_transform(lem)
+
+# Numpy arrays are easy to work with, so convert the result to an 
+# array
+train_data_features = train_data_features.toarray()
+    
+
+print train_data_features.shape
+
+# Take a look at the words in the vocabulary
+vocab = vectorizer.get_feature_names()
+print vocab
+
+
+
+import numpy as np
+
+# Sum up the counts of each vocabulary word
+dist = np.sum(train_data_features, axis=0)
+
+# For each, print the vocabulary word and the number of times it 
+# appears in the training set
+for tag, count in zip(vocab, dist):
+    print count, tag
+
+
+
+print "Training the random forest..."
+from sklearn.ensemble import RandomForestClassifier
+
+# Initialize a Random Forest classifier with 100 trees
+forest = RandomForestClassifier(n_estimators = 100) 
+
+# Fit the forest to the training set, using the bag of words as 
+# features and the sentiment labels as the response variable
+#
+# This may take a few minutes to run
+forest = forest.fit( train_data_features, train["sentiment"] )
+
+
+
+
+
+# Read the test data
+test = pd.read_csv("p4n4.txt", header=0, delimiter="\t", \
+                   quoting=3 )
+
+# Create an empty list and append the clean reviews one by one
+num_reviews = len(test["review"])
+
+#remove fullstop:
+yz=[]
+for i in xrange(0, num_reviews):
+    te = test["review"][i]
+    words = [te.replace(".", " ")]
+    final_string = ''.join(words)
+    #print final_string
+    yz.append(final_string)
+
+#print yz
+arsize = len(yz)
+arsize
+
+#clean_test_reviews = []
+yh = []
+emoticons = []
+html = []
+slangs = []
+punct = []
+stopw = []
+stem = []
+lem = [] 
+
+print "Cleaning and parsing the test set movie reviews...\n"
+for i in xrange( 0, arsize ):
+    # Call our function for each one, and add the result to the list of clean reviews
+	# If the index is evenly divisible by 1000, print a message
+    if( (i+1)%1000 == 0 ):
+         print "Review %d of %d\n" % ( i+1, arsize ) 
+    #clean_test_reviews.append( review_to_words( train["review"][i] ) )
+    yh.append(remove_accents(unicode(yz[i])))
+    emoticons.append( emoticons_handling( yh[i] ) )
+    html.append(html_tags(yh[i]))
+    slangs.append(slangs_handling(html[i]))
+    punct.append(punctuations(slangs[i]))
+    stopw.append(stop_words(punct[i]))
+    stem.append(stemming(stopw[i]))
+    lem.append(lemmatization(html[i]))
+
+# Get a bag of words for the test set, and convert to a numpy array
+test_data_features = vectorizer.transform(lem)
+test_data_features = test_data_features.toarray()
+
+# Use the random forest to make sentiment label predictions
+result = forest.predict(test_data_features)
+
+# Copy the results to a pandas dataframe with an "id" column and
+# a "sentiment" column
+output = pd.DataFrame( data={"sentiment":result} )
+
+# Use pandas to write the comma-separated output file
+# Use pandas to write the comma-separated output file
+output.to_csv( "C:\\Users\\MAYURI\\Desktop\\be project folder\\implementation\\exp33\\33_10_5.csv", index=False, quoting=3 )
